@@ -73,14 +73,14 @@ fn main() {
     let mut ordered_months = commissions_by_month.keys().cloned()
         .collect::<Vec<String>>();
 
-    ordered_months.sort_by(|a, b| {
-        println!("{}, {}", a, b);
-
-        let a_date = NaiveDate::parse_from_str(a, "%B %Y");
-        let b_date = NaiveDate::parse_from_str(b, "%B %Y");
-
-        a_date.cmp(&b_date)
-    });
+    // ordered_months.sort_by(|a, b| {
+    //     println!("{}, {}", a, b);
+    //
+    //     let a_date = NaiveDate::parse_from_str(a, "%B %Y").unwrap();
+    //     let b_date = NaiveDate::parse_from_str(b, "%B %Y").unwrap();
+    //
+    //     a_date.cmp(&b_date)
+    // });
 
     create_commission_sheets(&args.output, ordered_months, &commissions_by_month);
 
@@ -183,6 +183,8 @@ fn create_commission_sheets(output_sheet: &str, ordered_months: Vec<String>, com
     ensure_file_is_created(&output_sheet);
 
     let workbook = Workbook::new(output_sheet);
+    let decimal_format = workbook.add_format()
+        .set_num_format("#,##0.00");
 
     for month in ordered_months {
         let commissions = commissions_by_month.get(&month).unwrap();
@@ -200,8 +202,8 @@ fn create_commission_sheets(output_sheet: &str, ordered_months: Vec<String>, com
             worksheet.write_string((index + 1) as u32, 0, &commission.emission_date.format("%m/%d/%Y").to_string(), None);
             worksheet.write_string((index + 1) as u32, 1, &commission.number.to_string(), None);
             worksheet.write_string((index + 1) as u32, 2, &commission.client, None);
-            worksheet.write_string((index + 1) as u32, 3, &commission.installment_value.to_string(), None);
-            worksheet.write_string((index + 1) as u32, 4, &commission.commission_value.to_string(), None);
+            worksheet.write_number((index + 1) as u32, 3, commission.installment_value, Some(&decimal_format));
+            worksheet.write_number((index + 1) as u32, 4, commission.commission_value, Some(&decimal_format));
         }
     }
 
