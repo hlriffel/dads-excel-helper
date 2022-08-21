@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
-use std::fs::{File};
+use std::fs::File;
 use std::path::Path;
-use std::str::{FromStr};
+use std::str::FromStr;
 
 use calamine::{DataType, open_workbook, Reader, Xlsx};
-use xlsxwriter::{Workbook};
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use clap::Parser;
 use regex::Regex;
+use xlsxwriter::Workbook;
 
 const INVOICE_EMISSION_INDEX: i8 = 0;
 const INVOICE_NUMBER_INDEX: i8 = 1;
@@ -20,15 +20,15 @@ const INVOICE_VALUE_INDEX: i8 = 10;
 #[derive(Parser)]
 struct Args {
     /// Caminho da planilha de origem
-    #[clap(short, long)]
+    #[clap(short, long, default_value = "/home/hlriffel/Downloads/Vendas Liza - Maio.xlsx")]
     input: String,
 
     /// Planilha de entrada
-    #[clap(short, long, default_value = "VENDAS")]
+    #[clap(short, long, default_value = "Planilha")]
     sheet: String,
 
     /// Caminho onde a planilha resultado sera salva
-    #[clap(short, long)]
+    #[clap(short, long, default_value = "/home/hlriffel/Downloads/Comissoes.xlsx")]
     output: String,
 }
 
@@ -66,12 +66,20 @@ impl fmt::Display for CommissionedInvoice {
     }
 }
 
+struct ProcessingData {
+    row_count: usize,
+    processed_row_count: usize,
+}
+
 fn main() {
     let args = Args::parse();
-    let invoices: Vec<Invoice> = get_invoices(&args);
+    let mut processing_data = ProcessingData { row_count: 0, processed_row_count: 0 };
+    let invoices: Vec<Invoice> = get_invoices(&args, &mut processing_data);
     let commissions_by_month = get_commissions_by_month(invoices);
     let mut ordered_months = commissions_by_month.keys().cloned()
         .collect::<Vec<String>>();
+
+    println!("Got {} rows and processed {}.", processing_data.row_count, processing_data.processed_row_count);
 
     // ordered_months.sort_by(|a, b| {
     //     println!("{}, {}", a, b);
@@ -93,11 +101,13 @@ fn main() {
     // }
 }
 
-fn get_invoices(args: &Args) -> Vec<Invoice> {
+fn get_invoices(args: &Args, processing_data: &mut ProcessingData) -> Vec<Invoice> {
     let mut invoices: Vec<Invoice> = Vec::new();
     let mut workbook: Xlsx<_> = open_workbook(&args.input).unwrap();
 
     if let Some(Ok(range)) = workbook.worksheet_range(&args.sheet) {
+        processing_data.row_count = range.rows().skip(1).count();
+
         for row in range.rows().skip(1) {
             let emission_date = match &row[INVOICE_EMISSION_INDEX as usize] {
                 DataType::DateTime(f) => {
@@ -107,8 +117,12 @@ fn get_invoices(args: &Args) -> Vec<Invoice> {
                     let day_month_year_date = NaiveDateTime::from_timestamp(secs, nsecs).date();
 
                     Some(NaiveDate::from_ymd(day_month_year_date.year(),
-                                             day_month_year_date.day(),
-                                             day_month_year_date.month()))
+                                             day_month_year_date.month(),
+                                             day_month_year_date.day()))
+
+                    // Some(NaiveDate::from_ymd(day_month_year_date.year(),
+                    //                          day_month_year_date.day(),
+                    //                          day_month_year_date.month()))
                 }
                 DataType::String(s) => { Some(NaiveDate::parse_from_str(s, "%m/%d/%Y").unwrap()) }
                 _ => None
@@ -125,6 +139,8 @@ fn get_invoices(args: &Args) -> Vec<Invoice> {
             }
         }
     }
+
+    processing_data.processed_row_count = invoices.len();
 
     invoices
 }
@@ -179,7 +195,9 @@ fn get_commissions_by_month(invoices: Vec<Invoice>) -> HashMap<String, Vec<Commi
     invoices_by_month
 }
 
-fn create_commission_sheets(output_sheet: &str, ordered_months: Vec<String>, commissions_by_month: &HashMap<String, Vec<CommissionedInvoice>>) {
+fn create_commission_sheets(output_sheet: &str,
+                            ordered_months: Vec<String>,
+                            commissions_by_month: &HashMap<String, Vec<CommissionedInvoice>>) {
     ensure_file_is_created(&output_sheet);
 
     let workbook = Workbook::new(output_sheet);
